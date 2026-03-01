@@ -41,6 +41,10 @@ constexpr size_t kHprofHeaderLength = 20;           // Header size in bytes
 
 constexpr const char* kJavaLangString = "java.lang.String";
 constexpr const char* kSunMiscCleaner = "sun.misc.Cleaner";
+constexpr const char* kNativeAllocationRegistryCleanerThunk =
+    "libcore.util.NativeAllocationRegistry$CleanerThunk";
+constexpr const char* kNativeAllocationRegistry =
+    "libcore.util.NativeAllocationRegistry";
 
 class ByteIterator {
  public:
@@ -105,29 +109,18 @@ class HeapGraphResolver {
                     base::FlatHashMap<uint64_t, HprofHeapRootTag>& roots,
                     DebugStats& stats);
 
-  // Build the complete object graph with references and field values
   void ResolveGraph();
 
  private:
-  // Extract data for all objects
   void ExtractAllObjectData();
-
-  // Mark objects reachable from roots
   void MarkReachableObjects();
-
-  // Extract references from array elements
   void ExtractArrayElementReferences(Object& obj);
-
-  // Helper methods for data extraction
   bool ExtractObjectReferences(Object& obj, const ClassDefinition& cls);
   void ExtractFieldValues(Object& obj, const ClassDefinition& cls);
   void ExtractPrimitiveArrayValues(Object& obj);
   std::optional<std::string> DecodeJavaString(const Object& string_obj) const;
-
-  // Utility methods
-  std::vector<Field> GetClassHierarchyFields(uint64_t class_id) const;
-
-  // Calculate native memory sizes for objects
+  const std::vector<Field>& GetClassHierarchyFields(uint64_t class_id);
+  void ComputeSelfSizes();
   void CalculateNativeSizes();
 
   // Data references (not owned)
@@ -137,6 +130,9 @@ class HeapGraphResolver {
   base::FlatHashMap<uint64_t, HprofHeapRootTag>& roots_;
   base::FlatHashMap<uint64_t, ClassDefinition>& classes_;
   DebugStats& stats_;
+
+  // Cache for class hierarchy fields (avoids repeated hierarchy walks)
+  base::FlatHashMap<uint64_t, std::vector<Field>> field_cache_;
 };
 
 // Main parser class that builds a heap graph from HPROF data
@@ -244,7 +240,33 @@ class HeapGraphBuilder {
   TraceProcessorContext* context_;
 };
 
-// Helper method
+// Root type precedence ranking. Lower rank = higher priority.
+// Matches proto heap graph's kRootTypePrecedence:
+//   STICKY_CLASS (0) > JNI_GLOBAL (1) > JNI_LOCAL (2) > everything else (3)
+inline size_t RankRootType(HprofHeapRootTag tag) {
+  switch (tag) {
+    case HprofHeapRootTag::kStickyClass:
+      return 0;
+    case HprofHeapRootTag::kJniGlobal:
+      return 1;
+    case HprofHeapRootTag::kJniLocal:
+      return 2;
+    case HprofHeapRootTag::kJavaFrame:
+    case HprofHeapRootTag::kNativeStack:
+    case HprofHeapRootTag::kThreadBlock:
+    case HprofHeapRootTag::kMonitorUsed:
+    case HprofHeapRootTag::kThreadObj:
+    case HprofHeapRootTag::kInternedString:
+    case HprofHeapRootTag::kFinalizing:
+    case HprofHeapRootTag::kDebugger:
+    case HprofHeapRootTag::kVmInternal:
+    case HprofHeapRootTag::kJniMonitor:
+    case HprofHeapRootTag::kUnknown:
+      return 3;
+  }
+  return 3;
+}
+
 inline size_t GetFieldTypeSize(FieldType type, size_t id_size) {
   switch (type) {
     case FieldType::kObject:

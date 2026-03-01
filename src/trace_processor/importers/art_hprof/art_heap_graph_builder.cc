@@ -68,11 +68,11 @@ HeapGraph HeapGraphBuilder::BuildGraph() {
   }
 
   for (auto it = classes_.GetIterator(); it; ++it) {
-    graph.AddClass(it.value());
+    graph.AddClass(std::move(it.value()));
   }
 
   for (auto it = objects_.GetIterator(); it; ++it) {
-    graph.AddObject(it.value());
+    graph.AddObject(std::move(it.value()));
   }
 
   return graph;
@@ -324,7 +324,18 @@ bool HeapGraphBuilder::ParseRootRecord(HprofHeapRootTag tag) {
   }
 
   stats_.root_count++;
-  roots_[object_id] = tag;
+
+  // Root type precedence: only upgrade to a higher-priority root type.
+  // Matches proto heap graph's kRootTypePrecedence logic: STICKY_CLASS >
+  // JNI_GLOBAL > JNI_LOCAL > everything else (including VM_INTERNAL).
+  auto* existing = roots_.Find(object_id);
+  if (existing) {
+    if (RankRootType(tag) < RankRootType(*existing)) {
+      *existing = tag;
+    }
+  } else {
+    roots_[object_id] = tag;
+  }
   return true;
 }
 
