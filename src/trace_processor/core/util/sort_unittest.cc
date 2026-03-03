@@ -227,5 +227,40 @@ TEST(MsdRadixSort, SingleElementBuckets) {
   ASSERT_STREQ(data[2].key, "c");
 }
 
+TEST(MsdRadixSort, HighByteCharacters) {
+  // Regression test: when char is signed (default on x86), bytes > 0x7F are
+  // negative. Without a cast to uint8_t, `key[depth] + 1` produces a negative
+  // index into the counts array, causing out-of-bounds access.
+  //
+  // We need > kStdSortCutoff (24) elements so the radix path is exercised
+  // instead of falling through to std::sort.
+  std::vector<TestEntryString> data;
+  std::minstd_rand0 rnd(99);
+  for (uint32_t i = 0; i < 50; ++i) {
+    data.push_back(TestEntryString{"", i});
+    // Generate keys with bytes spanning the full 0x00-0xFF range.
+    uint32_t len = 2 + (rnd() % 8);
+    for (uint32_t j = 0; j < len; ++j) {
+      data.back().key[j] = static_cast<char>(rnd() % 256);
+    }
+    data.back().key[len] = '\0';
+  }
+
+  std::vector<TestEntryString> std_sorted = data;
+  std::sort(std_sorted.begin(), std_sorted.end(),
+            [](const TestEntryString& a, const TestEntryString& b) {
+              return std::string_view(a.key) < std::string_view(b.key);
+            });
+
+  std::vector<TestEntryString> scratch(data.size());
+  MsdRadixSort(
+      data.data(), data.data() + data.size(), scratch.data(),
+      [](const TestEntryString& x) { return std::string_view(x.key); });
+
+  for (size_t i = 0; i < data.size(); ++i) {
+    ASSERT_STREQ(data[i].key, std_sorted[i].key) << "mismatch at index " << i;
+  }
+}
+
 }  // namespace
 }  // namespace perfetto::trace_processor::core
