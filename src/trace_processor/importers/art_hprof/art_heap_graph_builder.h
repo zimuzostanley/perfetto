@@ -119,6 +119,8 @@ class HeapGraphResolver {
   void ExtractFieldValues(Object& obj, const ClassDefinition& cls);
   void ExtractPrimitiveArrayValues(Object& obj);
   std::optional<std::string> DecodeJavaString(const Object& string_obj) const;
+  void DecodeJavaStrings();
+  void GenerateArrayValueStrings();
   const std::vector<Field>& GetClassHierarchyFields(uint64_t class_id);
   void ComputeSelfSizes();
   void CalculateNativeSizes();
