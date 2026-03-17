@@ -131,7 +131,8 @@ function saveSession(): void {
   const date = new Date().toISOString().slice(0, 10);
   a.download = `qs-session-${date}.json`;
   a.click();
-  URL.revokeObjectURL(url);
+  // Delay revoke to allow the browser to start the download.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
   S.importMsg = {text: 'Session saved', ok: true};
   m.redraw();
 }

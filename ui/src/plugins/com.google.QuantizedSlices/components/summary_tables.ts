@@ -13,11 +13,9 @@
 // limitations under the License.
 
 import m from 'mithril';
-import {MergedSlice, SortState, SummaryRow} from '../models/types';
+import {MergedSlice, SortState, SummaryRow, LONG_PKG_PREFIX} from '../models/types';
 import {stateColor, stateLabel, nameColor} from '../utils/colors';
 import {fmtDur, fmtPct} from '../utils/format';
-
-const LONG_PKG_PREFIX = 'com.redfin.android.core.activity.launch.deeplink.';
 
 function buildSummaryData(data: MergedSlice[]): {
   stateMap: Record<string, {dur: number; count: number; color: string}>;
@@ -209,7 +207,7 @@ export const SummaryTables: m.Component<SummaryAttrs> = {
       dur: v.dur,
       count: v.count,
       color: v.color,
-      pct: v.dur,
+      pct: totalDur > 0 ? (v.dur / totalDur) * 100 : 0,
     }));
     tables.push(
       m(TableCard, {
@@ -230,7 +228,7 @@ export const SummaryTables: m.Component<SummaryAttrs> = {
         dur: v.dur,
         count: v.count,
         color: nameColor(k),
-        pct: v.dur,
+        pct: totalDur > 0 ? (v.dur / totalDur) * 100 : 0,
       }));
       tables.push(
         m(TableCard, {
@@ -252,7 +250,7 @@ export const SummaryTables: m.Component<SummaryAttrs> = {
         dur: v.dur,
         count: v.count,
         color: '#c62828',
-        pct: v.dur,
+        pct: totalDur > 0 ? (v.dur / totalDur) * 100 : 0,
       }));
       tables.push(
         m(TableCard, {

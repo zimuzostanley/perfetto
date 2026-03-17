@@ -454,14 +454,12 @@ export const CrossCompareModal: m.Component<{cl: Cluster}> = {
     }
   },
 
-  view(vnode: m.Vnode<{cl: Cluster}>) {
+  onupdate(vnode: m.VnodeDOM<{cl: Cluster}>) {
     const {cl} = vnode.attrs;
     const state = getCrossCompareState();
-    if (!state) return null;
+    if (!state) return;
 
-    const progress = getProgress(state);
-
-    // Apply slider to new pairs when they load
+    // Apply slider to new pairs when they change.
     const pairKey = state.currentPair
       ? state.currentPair[0] + '|' + state.currentPair[1]
       : null;
@@ -470,8 +468,16 @@ export const CrossCompareModal: m.Component<{cl: Cluster}> = {
       if (ccSliderPct < 100) updateBothSliders(cl, ccSliderPct);
     }
 
-    // Clear anchor if discarded
+    // Clear anchor if discarded.
     if (anchorKey && state.discardedKeys.has(anchorKey)) clearAnchor();
+  },
+
+  view(vnode: m.Vnode<{cl: Cluster}>) {
+    const {cl} = vnode.attrs;
+    const state = getCrossCompareState();
+    if (!state) return null;
+
+    const progress = getProgress(state);
 
     const active = anchorActive(state);
     const canDiscard = active || !!state.selectedSide;

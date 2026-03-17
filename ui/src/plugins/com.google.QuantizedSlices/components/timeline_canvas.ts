@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {MergedSlice} from '../models/types';
+import {MergedSlice, LONG_PKG_PREFIX} from '../models/types';
 import {stateColor, stateLabel, nameColor, isDark} from '../utils/colors';
 import {fmtDur, fmtPct} from '../utils/format';
-
-const LONG_PKG_PREFIX = 'com.redfin.android.core.activity.launch.deeplink.';
 
 export interface HitRect {
   x: number;
@@ -26,20 +24,12 @@ export interface HitRect {
   d: MergedSlice;
 }
 
-/**
- * Parameters for rendering a mini canvas timeline.
- */
 export interface RenderParams {
   seq: MergedSlice[];
   totalDur: number;
   highlightIdx?: number;
 }
 
-/**
- * Renders a compact two-row timeline onto a canvas element.
- * Top row: thread state colors. Bottom row: slice name colors.
- * Returns hit-test rectangles for tooltip interaction.
- */
 export function renderMiniCanvas(
   canvas: HTMLCanvasElement,
   params: RenderParams,
@@ -80,19 +70,16 @@ export function renderMiniCanvas(
   return hits;
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+// DOM-based tooltip builder — avoids innerHTML and XSS risks.
+
+function createSpan(className: string, text: string, color?: string): HTMLSpanElement {
+  const span = document.createElement('span');
+  span.className = className;
+  span.textContent = text;
+  if (color) span.style.color = color;
+  return span;
 }
 
-/**
- * Positions and populates the `.qs-tooltip` element based on a mouse event
- * over a timeline canvas. Finds the hovered slice from `hits` and renders
- * its details.
- */
 export function showTooltip(
   e: MouseEvent,
   hits: HitRect[],
@@ -104,10 +91,15 @@ export function showTooltip(
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
-  const hit = hits
-    .slice()
-    .reverse()
-    .find((r) => mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h);
+
+  let hit: HitRect | undefined;
+  for (let i = hits.length - 1; i >= 0; i--) {
+    const r = hits[i];
+    if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
+      hit = r;
+      break;
+    }
+  }
 
   if (!hit) {
     tip.style.display = 'none';
@@ -115,31 +107,31 @@ export function showTooltip(
   }
 
   const d = hit.d;
-  const rows: Array<[string, string, string | null]> = [
+  const rows: Array<[string, string, string | undefined]> = [
     ['state', stateLabel(d), stateColor(d)],
-    ['io_wait', d.io_wait !== null ? String(d.io_wait) : '\u2014', null],
-    ['blocked', d.blocked_function ?? '\u2014', null],
-    ['dur', fmtDur(d.dur) + '  (' + fmtPct(d.dur, totalDur) + ')', null],
-    ['start', '+' + fmtDur(d.tsRel), null],
-    ['depth', d.depth !== null ? String(d.depth) : '\u2014', null],
-    ['\u00d7merged', String(d._merged), null],
+    ['io_wait', d.io_wait !== null ? String(d.io_wait) : '\u2014', undefined],
+    ['blocked', d.blocked_function ?? '\u2014', undefined],
+    ['dur', fmtDur(d.dur) + '  (' + fmtPct(d.dur, totalDur) + ')', undefined],
+    ['start', '+' + fmtDur(d.tsRel), undefined],
+    ['depth', d.depth !== null ? String(d.depth) : '\u2014', undefined],
+    ['\u00d7merged', String(d._merged), undefined],
   ];
 
-  const nameDisplay = escapeHtml(
-    (d.name ?? 'null').replace(LONG_PKG_PREFIX, ''),
-  );
+  // Build tooltip DOM without innerHTML.
+  tip.replaceChildren();
 
-  tip.innerHTML =
-    `<div class="qs-tooltip-name">${nameDisplay}</div>` +
-    '<div class="qs-tooltip-grid">' +
-    rows
-      .map(
-        ([k, v, col]) =>
-          `<span class="qs-tooltip-key">${escapeHtml(k)}</span>` +
-          `<span class="qs-tooltip-val"${col ? ` style="color:${escapeHtml(col)}"` : ''}>${escapeHtml(v)}</span>`,
-      )
-      .join('') +
-    '</div>';
+  const nameDiv = document.createElement('div');
+  nameDiv.className = 'qs-tooltip-name';
+  nameDiv.textContent = (d.name ?? 'null').replace(LONG_PKG_PREFIX, '');
+  tip.appendChild(nameDiv);
+
+  const grid = document.createElement('div');
+  grid.className = 'qs-tooltip-grid';
+  for (const [k, v, col] of rows) {
+    grid.appendChild(createSpan('qs-tooltip-key', k));
+    grid.appendChild(createSpan('qs-tooltip-val', v, col));
+  }
+  tip.appendChild(grid);
 
   tip.style.display = 'block';
   const TW = tip.offsetWidth || 300;
@@ -154,9 +146,6 @@ export function showTooltip(
   tip.style.top = ty + 'px';
 }
 
-/**
- * Hides the `.qs-tooltip` element.
- */
 export function hideTooltip(): void {
   const tip = document.querySelector<HTMLElement>('.qs-tooltip');
   if (tip) tip.style.display = 'none';

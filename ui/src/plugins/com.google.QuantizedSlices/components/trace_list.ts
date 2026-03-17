@@ -34,6 +34,7 @@ import {
 } from '../state';
 import type {TraceState, Cluster} from '../state';
 import type {OverviewFilter} from '../models/types';
+import {BRUSH_BASE_URL} from '../models/types';
 import {traceExportRow, rowsToTsv, rowsToJson} from '../utils/export';
 import type {ExportRow} from '../utils/export';
 import {TraceCard} from './trace_card';
@@ -62,7 +63,7 @@ function downloadFile(content: string, filename: string, mime: string): void {
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function buildRows(clusters: Cluster[]): ExportRow[] {
@@ -304,7 +305,9 @@ function renderCardList(cl: Cluster, traces: TraceState[]): m.Children {
   const remaining = traces.length - visible.length;
 
   return m('.qs-trace-list', [
-    ...visible.map((ts) => m(TraceCard, {cl, ts, idx: idxMap.get(ts) ?? 0})),
+    ...visible.map((ts) =>
+      m(TraceCard, {key: ts._key, cl, ts, idx: idxMap.get(ts) ?? 0}),
+    ),
     remaining > 0
       ? m(
           '.qs-show-more-wrap',
@@ -345,7 +348,7 @@ function renderOpenInBrush(
       ];
       const encoded = encodeURIComponent(JSON.stringify(filters));
       const url =
-        `https://brush.corp.google.com/?filters=${encoded}` +
+        `${BRUSH_BASE_URL}?filters=${encoded}` +
         '&metric_id=android_startup&charts=gallery' +
         '&gallerySvgColumn=svg&galleryMetricColumn=dur_ms' +
         '&galleryMetricNameColumn=process_name';

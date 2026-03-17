@@ -26,15 +26,24 @@ import {
 
 // -- Field resolution --
 
+// Resolves a field value from an object by trying a list of aliases.
+// The fallback can be a static value or a factory function (for values like
+// crypto.randomUUID() that must be unique per call). Factory functions are
+// wrapped in {factory: () => T} to avoid ambiguity when T itself is a function.
+type FallbackValue<T> = T | {factory: () => T};
+
 export function resolveField<T>(
   obj: Record<string, unknown>,
   aliases: string[],
-  fallback: T | (() => T),
+  fallback: FallbackValue<T>,
 ): T {
   for (const alias of aliases) {
     if (obj[alias] !== undefined) return obj[alias] as T;
   }
-  return typeof fallback === 'function' ? (fallback as () => T)() : fallback;
+  if (typeof fallback === 'object' && fallback !== null && 'factory' in fallback) {
+    return (fallback as {factory: () => T}).factory();
+  }
+  return fallback as T;
 }
 
 // -- Slice normalization --
@@ -122,6 +131,47 @@ function extractUuid(val: string): string {
   return base.replace(/\.\w+(\.\w+)*$/, '');
 }
 
+// -- Shared slice-field parsing --
+// Handles string (JSON/base64), object-with-slices, or raw array inputs.
+
+export function parseSlicesField(rawSlices: unknown): Slice[] | null {
+  if (typeof rawSlices === 'string') {
+    let decoded = rawSlices;
+    if (!decoded.startsWith('[') && !decoded.startsWith('{')) {
+      try {
+        decoded = atob(decoded);
+      } catch {
+        return null;
+      }
+    }
+    try {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(decoded);
+      } catch {
+        parsed = JSON.parse(repairJson(decoded));
+      }
+      const parsedObj = parsed as Record<string, unknown>;
+      const arr = Array.isArray(parsed)
+        ? (parsed as unknown[])
+        : ((parsedObj.slices ?? parsedObj.data) as unknown[] | undefined);
+      if (!Array.isArray(arr) || arr.length === 0) return null;
+      return arr.map((s: unknown) =>
+        normalizeSlice(s as Record<string, unknown>),
+      );
+    } catch {
+      return null;
+    }
+  }
+  if (Array.isArray(rawSlices)) {
+    const slices = rawSlices.map((s: unknown) =>
+      normalizeSlice(s as Record<string, unknown>),
+    );
+    return slices.length > 0 ? slices : null;
+  }
+  return null;
+}
+
 // -- Trace normalization --
 
 export function normalizeTrace(
@@ -134,38 +184,8 @@ export function normalizeTrace(
     cfg.slices.fallback,
   );
 
-  let slices: Slice[];
-  if (typeof rawSlices === 'string') {
-    let decoded = rawSlices;
-    if (!decoded.startsWith('[') && !decoded.startsWith('{')) {
-      try {
-        decoded = atob(decoded);
-      } catch {
-        return null;
-      }
-    }
-    try {
-      let parsedSlices: unknown;
-      try {
-        parsedSlices = JSON.parse(decoded);
-      } catch {
-        parsedSlices = JSON.parse(repairJson(decoded));
-      }
-      slices = (Array.isArray(parsedSlices) ? parsedSlices : []).map(
-        (s: unknown) => normalizeSlice(s as Record<string, unknown>),
-      );
-    } catch {
-      return null;
-    }
-  } else if (Array.isArray(rawSlices)) {
-    slices = rawSlices.map((s: unknown) =>
-      normalizeSlice(s as Record<string, unknown>),
-    );
-  } else {
-    return null;
-  }
-
-  if (slices.length === 0) return null;
+  const slices = parseSlicesField(rawSlices);
+  if (!slices) return null;
 
   // Collect extra fields (anything not a known column alias)
   const knownKeys = new Set([
@@ -431,35 +451,12 @@ export function parseDelimitedToTraces(
     const cols = rows[ri];
     if (!cols[slicesIdx]?.trim()) continue;
 
-    let raw = cols[slicesIdx].trim();
-    if (!raw.startsWith('[') && !raw.startsWith('{')) {
-      try {
-        raw = atob(raw);
-      } catch {
-        /* not base64, use as-is */
-      }
-    }
-
     try {
-      let sliceParsed: unknown;
-      try {
-        sliceParsed = JSON.parse(raw);
-      } catch {
-        sliceParsed = JSON.parse(repairJson(raw));
-      }
-      const sliceParsedObj = sliceParsed as Record<string, unknown>;
-      const sliceArr = Array.isArray(sliceParsed)
-        ? (sliceParsed as unknown[])
-        : ((sliceParsedObj.slices ?? sliceParsedObj.data) as
-            | unknown[]
-            | undefined);
-      if (!Array.isArray(sliceArr) || sliceArr.length === 0) {
+      const slices = parseSlicesField(cols[slicesIdx].trim());
+      if (!slices) {
         parseErrors++;
         continue;
       }
-      const slices = sliceArr.map((s: unknown) =>
-        normalizeSlice(s as Record<string, unknown>),
-      );
 
       const extra: Record<string, unknown> = {};
       headers.forEach((h, idx) => {
@@ -476,7 +473,7 @@ export function parseDelimitedToTraces(
       let pkgName =
         pkgIdx >= 0 && cols[pkgIdx]
           ? cols[pkgIdx].trim()
-          : cfg.package_name.fallback();
+          : cfg.package_name.fallback.factory();
       if (pkgName.startsWith('{')) {
         try {
           const p = JSON.parse(pkgName) as Record<string, unknown>;
@@ -490,7 +487,7 @@ export function parseDelimitedToTraces(
         trace_uuid: extractUuid(
           uuidIdx >= 0 && cols[uuidIdx]
             ? cols[uuidIdx].trim()
-            : cfg.trace_uuid.fallback(),
+            : cfg.trace_uuid.fallback.factory(),
         ),
         package_name: pkgName,
         startup_dur:

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {Verdict} from '../models/types';
+import {Verdict, TRACE_VIEWER_BASE_URL} from '../models/types';
 
 export interface ExportRow {
   trace_uuid: string;
@@ -40,7 +40,7 @@ const EXCLUDED_EXTRA = new Set([
 
 export function buildTraceLink(uuid: string, packageName?: string): string {
   if (!uuid) return '';
-  let url = `https://apconsole.corp.google.com/link/perfetto/field_traces?uuid=${uuid}`;
+  let url = `${TRACE_VIEWER_BASE_URL}?uuid=${uuid}`;
   if (packageName) {
     url += `&query=${encodeURIComponent(`com.android.AndroidStartup.packageName=${packageName}`)}`;
   }

@@ -22,6 +22,7 @@ import type {
   SortState,
 } from './models/types';
 import {buildMergeCache, getCompressed} from './models/compression';
+import type {MergeCache} from './models/compression';
 import type {CrossCompareState} from './models/cross_compare';
 import {
   createCrossCompareState,
@@ -35,11 +36,14 @@ import {
 } from './models/cross_compare';
 
 export interface TraceState {
+  // Immutable data
   trace: TraceEntry;
   _key: string;
-  cache: Map<number, MergedSlice[]> | null;
   totalDur: number;
   origN: number;
+
+  // Mutable compression cache (lazily initialized)
+  _mergeCache: MergeCache | null;
   sliderValue: number;
   currentSeq: MergedSlice[];
 }
@@ -57,19 +61,26 @@ interface VerdictCounts {
 }
 
 export interface Cluster {
+  // -- Data --
   id: string;
   name: string;
   traces: TraceState[];
   verdicts: Map<string, Verdict>;
-  overviewFilter: OverviewFilter;
   counts: VerdictCounts;
-  tableSortState: Record<string, SortState>;
+
+  // -- View state --
+  overviewFilter: OverviewFilter;
   splitView: boolean;
   splitFilters: [OverviewFilter, OverviewFilter];
   splitRatio: number;
+
+  // -- Sort / filter state --
+  tableSortState: Record<string, SortState>;
   sortField: 'index' | 'startup_dur';
   sortDir: 1 | -1;
   propFilters: Map<string, Set<string>>;
+
+  // -- Compression state --
   globalSlider: number; // 1-100 percentage
 }
 
@@ -128,7 +139,10 @@ export function recomputeCounts(cl: Cluster): void {
 }
 
 export function initTraceLazy(trace: TraceEntry): TraceState {
+  // Sort slices by timestamp to ensure totalDur computation is correct.
   const slices = trace.slices;
+  slices.sort((a, b) => a.ts - b.ts);
+
   const totalDur =
     slices.length > 0
       ? slices.reduce((mx, d) => Math.max(mx, d.ts - slices[0].ts + d.dur), 0)
@@ -136,7 +150,7 @@ export function initTraceLazy(trace: TraceEntry): TraceState {
   return {
     trace,
     _key: traceKey(trace),
-    cache: null,
+    _mergeCache: null,
     totalDur,
     origN: slices.length,
     sliderValue: slices.length,
@@ -145,15 +159,15 @@ export function initTraceLazy(trace: TraceEntry): TraceState {
 }
 
 export function ensureCache(ts: TraceState): void {
-  if (ts.cache !== null) return;
-  ts.cache = buildMergeCache(ts.trace.slices);
-  ts.currentSeq = getCompressed(ts.cache, ts.origN, ts.sliderValue);
+  if (ts._mergeCache !== null) return;
+  ts._mergeCache = buildMergeCache(ts.trace.slices);
+  ts.currentSeq = getCompressed(ts._mergeCache, ts.origN, ts.sliderValue);
 }
 
 export function updateSlider(ts: TraceState, value: number): void {
   ensureCache(ts);
   ts.sliderValue = value;
-  ts.currentSeq = getCompressed(ts.cache!, ts.origN, value);
+  ts.currentSeq = getCompressed(ts._mergeCache!, ts.origN, value);
 }
 
 export function updateGlobalSlider(cl: Cluster, pct: number): void {
@@ -233,6 +247,13 @@ export function removeCluster(id: string): void {
   S.clusters = S.clusters.filter((c) => c.id !== id);
   if (S.activeClusterId === id) {
     S.activeClusterId = S.clusters.length > 0 ? S.clusters[0].id : null;
+  }
+  // Clean up cross-compare state if it belonged to the removed cluster.
+  if (_ccState) {
+    const remaining = S.clusters.find((c) =>
+      c.traces.some((ts) => _ccState!.traceKeys.includes(ts._key)),
+    );
+    if (!remaining) _ccState = null;
   }
   m.redraw();
 }

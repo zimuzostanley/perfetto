@@ -59,16 +59,16 @@ export interface SummaryRow {
 }
 
 export interface ColumnConfig {
-  trace_uuid: {aliases: string[]; fallback: () => string};
-  package_name: {aliases: string[]; fallback: () => string};
-  startup_dur: {aliases: string[]; fallback: () => number};
-  slices: {aliases: string[]; fallback: () => Slice[]};
+  trace_uuid: {aliases: string[]; fallback: {factory: () => string}};
+  package_name: {aliases: string[]; fallback: {factory: () => string}};
+  startup_dur: {aliases: string[]; fallback: {factory: () => number}};
+  slices: {aliases: string[]; fallback: {factory: () => Slice[]}};
 }
 
 export const DEFAULT_COLUMN_CONFIG: ColumnConfig = {
   trace_uuid: {
     aliases: ['trace_uuid', 'uuid', 'id', 'trace_id', 'trace_address'],
-    fallback: () => crypto.randomUUID(),
+    fallback: {factory: () => crypto.randomUUID()},
   },
   package_name: {
     aliases: [
@@ -79,7 +79,7 @@ export const DEFAULT_COLUMN_CONFIG: ColumnConfig = {
       'pkg',
       'app',
     ],
-    fallback: () => 'unknown',
+    fallback: {factory: () => 'unknown'},
   },
   startup_dur: {
     aliases: [
@@ -91,7 +91,7 @@ export const DEFAULT_COLUMN_CONFIG: ColumnConfig = {
       'total_dur',
       'startup_ms',
     ],
-    fallback: () => 0,
+    fallback: {factory: () => 0},
   },
   slices: {
     aliases: [
@@ -104,7 +104,7 @@ export const DEFAULT_COLUMN_CONFIG: ColumnConfig = {
       'base64',
       'thread_slices',
     ],
-    fallback: () => [],
+    fallback: {factory: () => []},
   },
 };
 
@@ -120,7 +120,7 @@ export interface SliceFieldConfig {
 
 export const DEFAULT_SLICE_FIELD_CONFIG: SliceFieldConfig = {
   ts: {aliases: ['ts', 'timestamp', 'start', 'start_ts', 'begin'], fallback: 0},
-  dur: {aliases: ['dur', 'duration', 'length', 'end_ts'], fallback: 0},
+  dur: {aliases: ['dur', 'duration', 'length'], fallback: 0},
   name: {aliases: ['name', 'slice_name', 'label', 'event'], fallback: null},
   state: {aliases: ['state', 'thread_state', 'sched_state'], fallback: null},
   depth: {aliases: ['depth', 'level', 'stack_depth'], fallback: null},
@@ -130,3 +130,14 @@ export const DEFAULT_SLICE_FIELD_CONFIG: SliceFieldConfig = {
     fallback: null,
   },
 };
+
+// Shared constants used by multiple components.
+export const LONG_PKG_PREFIX =
+  'com.redfin.android.core.activity.launch.deeplink.';
+
+// Base URL for the trace viewer. Change this to point to a different viewer.
+export const TRACE_VIEWER_BASE_URL =
+  'https://apconsole.corp.google.com/link/perfetto/field_traces';
+
+// Base URL for the Brush tool.
+export const BRUSH_BASE_URL = 'https://brush.corp.google.com/';
