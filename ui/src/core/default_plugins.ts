@@ -78,6 +78,7 @@ export const defaultPlugins = [
   'dev.perfetto.RecordTraceV2',
   'dev.perfetto.Sched',
   'dev.perfetto.Screenshots',
+  'dev.perfetto.VideoFrames',
   'dev.perfetto.SettingsPage',
   'dev.perfetto.SqlModules',
   'dev.perfetto.StandardGroups',

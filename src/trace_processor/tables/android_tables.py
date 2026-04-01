@@ -359,6 +359,26 @@ ANDROID_USER_LIST_TABLE = Table(
             'android_user_id': '''User id on device''',
         }))
 
+ANDROID_VIDEO_FRAMES_TABLE = Table(
+    python_module=__file__,
+    class_name='AndroidVideoFramesTable',
+    sql_name='__intrinsic_video_frames',
+    columns=[
+        C('ts', CppInt64()),
+        C('frame_number', CppInt64()),
+    ],
+    tabledoc=TableDoc(
+        doc='''
+          Video frames captured from the device display.
+          JPEG image data is stored separately and accessed via the
+          video_frame_image() SQL function.
+        ''',
+        group='Android',
+        columns={
+            'ts': 'Timestamp of the frame capture.',
+            'frame_number': 'Sequential frame number within the session.',
+        }))
+
 # Keep this list sorted.
 ALL_TABLES = [
     ANDROID_CPU_PER_UID_TRACK_TABLE,
@@ -369,4 +389,5 @@ ALL_TABLES = [
     ANDROID_LOG_TABLE,
     ANDROID_MOTION_EVENTS_TABLE,
     ANDROID_USER_LIST_TABLE,
+    ANDROID_VIDEO_FRAMES_TABLE,
 ]

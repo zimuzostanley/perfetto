@@ -1,0 +1,65 @@
+// Copyright (C) 2026 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+.pf-video-frame-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 8px;
+}
+
+.pf-video-frame-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+
+  button {
+    padding: 4px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #f5f5f5;
+    cursor: pointer;
+    font-size: 14px;
+
+    &:hover:not(:disabled) {
+      background: #e0e0e0;
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+  }
+}
+
+.pf-video-frame-counter {
+  font-size: 13px;
+  color: #666;
+  margin-left: 8px;
+}
+
+.pf-video-frame-image {
+  max-height: calc(100% - 40px);
+  max-width: 100%;
+  object-fit: contain;
+  border: 1px solid #ddd;
+  border-radius: 2px;
+}
+
+.pf-video-frame-loading {
+  color: #999;
+  font-size: 14px;
+  padding: 20px;
+}

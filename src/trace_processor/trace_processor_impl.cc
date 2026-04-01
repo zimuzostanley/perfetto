@@ -112,6 +112,7 @@
 #include "src/trace_processor/perfetto_sql/intrinsics/functions/trees/tree_functions.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/functions/type_builders.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/functions/utils.h"
+#include "src/trace_processor/perfetto_sql/intrinsics/functions/video_frame_image.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/functions/window_functions.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/operators/counter_mipmap_operator.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/operators/slice_mipmap_operator.h"
@@ -1053,6 +1054,7 @@ std::vector<PerfettoSqlEngine::StaticTable> TraceProcessorImpl::GetStaticTables(
   AddStaticTable(tables,
                  storage->mutable_android_game_intervenion_list_table());
   AddStaticTable(tables, storage->mutable_android_log_table());
+  AddStaticTable(tables, storage->mutable_video_frames_table());
   AddStaticTable(tables, storage->mutable_build_flags_table());
   AddStaticTable(tables, storage->mutable_modules_table());
   AddStaticTable(tables, storage->mutable_clock_snapshot_table());
@@ -1233,6 +1235,7 @@ std::unique_ptr<PerfettoSqlEngine> TraceProcessorImpl::InitPerfettoSqlEngine(
   RegisterFunction<ExportJson>(engine.get(), storage);
   RegisterFunction<ExtractArgFunction>(
       engine.get(), std::make_unique<ExtractArgFunction::Context>(storage));
+  RegisterFunction<VideoFrameImageFunction>(engine.get(), storage);
   RegisterFunction<ArgSetToJson>(
       engine.get(), std::make_unique<ArgSetToJson::Context>(storage));
   RegisterFunction<AbsTimeStr>(engine.get(), context->clock_converter.get());
