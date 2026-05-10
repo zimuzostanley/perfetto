@@ -31,6 +31,7 @@ import {
 } from '../trace_processor/query_result';
 import {
   Flamegraph,
+  FlamegraphDiffDirection,
   FlamegraphPropertyDefinition,
   FlamegraphQueryData,
   FlamegraphState,
@@ -118,6 +119,13 @@ export interface QueryFlamegraphMetric {
   //
   // Examples include marking inlined functions, optimized code, etc.
   readonly optionalMarker?: FlamegraphOptionalMarker;
+
+  // When true, the metric's SELECT must expose `diff_direction` (TEXT,
+  // one of 'GREW' | 'SHRANK' | 'NEW' | 'UNCHANGED') and
+  // `diff_intensity` (REAL in [0, 1]). Both are read into the typed
+  // FlamegraphNode fields and hidden from the tooltip; the widget uses
+  // them to modulate the per-name palette colour.
+  readonly diffShading?: boolean;
 }
 
 export interface MetricsFromTableOrSubqueryOptions {
@@ -263,6 +271,7 @@ async function computeFlamegraphTree(
     optionalNodeActions,
     optionalRootActions,
     optionalMarker,
+    diffShading,
   }: QueryFlamegraphMetric,
   {filters, view}: FlamegraphState,
 ): Promise<FlamegraphQueryData> {
@@ -287,7 +296,27 @@ async function computeFlamegraphTree(
 
   const agg = aggregatableProperties ?? [];
   const aggCols = agg.map((x) => x.name);
-  const unagg = unaggregatableProperties ?? [];
+  // When the metric opts into diff shading, expose the two diff columns
+  // as invisible unaggregatable properties so they ride through the same
+  // SQL pipeline. They are lifted out into typed FlamegraphNode fields
+  // below and never surface in the tooltip.
+  const unagg = [
+    ...(unaggregatableProperties ?? []),
+    ...(diffShading
+      ? [
+          {
+            name: 'diff_direction',
+            displayName: 'Diff direction',
+            isVisible: () => false,
+          },
+          {
+            name: 'diff_intensity',
+            displayName: 'Diff intensity',
+            isVisible: () => false,
+          },
+        ]
+      : []),
+  ];
   const unaggCols = unagg.map((x) => x.name);
 
   const matchingColumns = ['name', ...unaggCols];
@@ -557,6 +586,24 @@ async function computeFlamegraphTree(
       marker = optionalMarker.name;
     }
 
+    let diffDirection: FlamegraphDiffDirection | undefined;
+    let diffIntensity: number | undefined;
+    if (diffShading) {
+      const dir = properties.get('diff_direction')?.value;
+      properties.delete('diff_direction');
+      const intensity = properties.get('diff_intensity')?.value;
+      properties.delete('diff_intensity');
+      if (
+        dir === 'GREW' ||
+        dir === 'SHRANK' ||
+        dir === 'NEW' ||
+        dir === 'UNCHANGED'
+      ) {
+        diffDirection = dir;
+      }
+      if (intensity !== undefined) diffIntensity = Number(intensity);
+    }
+
     nodes.push({
       id: it.id,
       parentId: it.parentId,
@@ -569,6 +616,8 @@ async function computeFlamegraphTree(
       xEnd: it.xEnd,
       properties,
       marker,
+      diffDirection,
+      diffIntensity,
     });
     if (it.depth === 1) {
       postiveRootsValue += it.cumulativeValue;

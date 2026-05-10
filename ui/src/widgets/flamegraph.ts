@@ -36,6 +36,7 @@ import {Rect2D, Size2D} from '../base/geom';
 import {VirtualOverlayCanvas} from './virtual_overlay_canvas';
 import {MenuItem, MenuItemAttrs, PopupMenu} from './menu';
 import {Color, HSLColor} from '../base/color';
+import {clamp} from '../base/math_utils';
 import {hash} from '../base/hash';
 import {MithrilEvent} from '../base/mithril_utils';
 import {Icons} from '../base/semantic_icons';
@@ -112,6 +113,11 @@ export type FlamegraphPropertyDefinition = {
   isAggregatable: boolean;
 };
 
+// Direction in which a node's value moved between two snapshots, used
+// to drive palette modulation in diff flamegraphs. See diffShading on
+// QueryFlamegraphMetric and modulatePalette below.
+export type FlamegraphDiffDirection = 'GREW' | 'SHRANK' | 'NEW' | 'UNCHANGED';
+
 export interface FlamegraphNode {
   readonly id: number;
   readonly parentId: number;
@@ -124,6 +130,12 @@ export interface FlamegraphNode {
   readonly marker?: string;
   readonly xStart: number;
   readonly xEnd: number;
+  // Set together when the metric opts into diff shading. The widget
+  // keeps the per-name palette hue and shifts saturation/lightness
+  // proportional to `diffIntensity` ∈ [0, 1] in the direction encoded
+  // by `diffDirection`.
+  readonly diffDirection?: FlamegraphDiffDirection;
+  readonly diffIntensity?: number;
 }
 
 export interface FlamegraphQueryData {
@@ -690,8 +702,17 @@ export class Flamegraph implements m.ClassComponent<FlamegraphAttrs> {
         name = '(merged)';
         colorScheme = getFlamegraphColorScheme(name, state === 'PARTIAL');
       } else {
-        name = nodes[source.queryIdx].name;
-        colorScheme = getFlamegraphColorScheme(name, state === 'PARTIAL');
+        const node = nodes[source.queryIdx];
+        name = node.name;
+        if (node.diffDirection !== undefined && state !== 'PARTIAL') {
+          colorScheme = getDiffShadedColorScheme(
+            name,
+            node.diffDirection,
+            node.diffIntensity ?? 1,
+          );
+        } else {
+          colorScheme = getFlamegraphColorScheme(name, state === 'PARTIAL');
+        }
       }
       const bgColor = hover ? colorScheme.variant : colorScheme.base;
       const textColor = hover ? colorScheme.textVariant : colorScheme.textBase;
@@ -1629,6 +1650,59 @@ const ROOT_COLOR_SCHEME = makeColorScheme(
 // Cache for computed color schemes by name
 const colorSchemeCache = new Map<string, ColorScheme>();
 
+// Diff-shaded schemes keyed by `${name}|${dir}|${intensityBucket}`.
+// Quantising intensity to one decimal place keeps the cache bounded for
+// flamegraphs with many distinct deltas.
+const diffShadedSchemeCache = new Map<string, ColorScheme>();
+
+// Build a ColorScheme that keeps the per-name palette hue and shifts
+// only saturation / lightness in the direction the node moved between
+// snapshots. Hue is preserved so a class renders with the same colour
+// across diff and non-diff modes; intensity ∈ [0, 1] (clamped) scales
+// the shift.
+function getDiffShadedColorScheme(
+  name: string,
+  dir: FlamegraphDiffDirection,
+  intensity: number,
+): ColorScheme {
+  const i = clamp(Number.isFinite(intensity) ? intensity : 1, 0, 1);
+  const key = `${name}|${dir}|${i.toFixed(1)}`;
+  const cached = diffShadedSchemeCache.get(key);
+  if (cached !== undefined) return cached;
+  const base = modulatePalette(paletteHsl(name), dir, i);
+  const scheme = makeColorScheme(base, base.darken(12).saturate(15));
+  diffShadedSchemeCache.set(key, scheme);
+  return scheme;
+}
+
+function modulatePalette(
+  base: HSLColor,
+  dir: FlamegraphDiffDirection,
+  intensity: number,
+): HSLColor {
+  switch (dir) {
+    case 'GREW': // more vivid, slightly darker
+      return base
+        .saturate(Math.round(25 * intensity))
+        .darken(Math.round(8 * intensity));
+    case 'SHRANK': // faded toward background, hue retained
+      return base
+        .lighten(Math.round(15 * intensity))
+        .desaturate(Math.round(15 * intensity));
+    case 'NEW':
+      return base.saturate(25).darken(5);
+    case 'UNCHANGED':
+      return base.lighten(8).desaturate(10);
+  }
+}
+
+// Base palette colour for a node name. Hashing the name to a hue keeps
+// the same class in the same colour across diff and non-diff modes; the
+// fixed saturation / lightness match the pprof web UI.
+function paletteHsl(name: string): HSLColor {
+  return new HSLColor({h: hash(name, 360), s: 46, l: 80});
+}
+
 function getFlamegraphColorScheme(name: string, greyed: boolean): ColorScheme {
   if (greyed) {
     return GREYED_COLOR_SCHEME;
@@ -1636,17 +1710,11 @@ function getFlamegraphColorScheme(name: string, greyed: boolean): ColorScheme {
   if (name === 'unknown' || name === 'root') {
     return ROOT_COLOR_SCHEME;
   }
-
-  // Check cache first
   let scheme = colorSchemeCache.get(name);
   if (scheme !== undefined) {
     return scheme;
   }
-
-  // Hash the name to get a predictable hue, then create color with fixed
-  // saturation and lightness values to match what pprof web UI does.
-  const hue = hash(name, 360);
-  const base = new HSLColor({h: hue, s: 46, l: 80});
+  const base = paletteHsl(name);
   scheme = makeColorScheme(base, base.darken(15).saturate(15));
   colorSchemeCache.set(name, scheme);
   return scheme;
