@@ -45,6 +45,11 @@ import {
   isDiffActive,
 } from './baseline/state';
 import {TopBar} from './top_bar';
+import ClassesDiffView from './views/diff/classes_diff_view';
+import StringsDiffView from './views/diff/strings_diff_view';
+import ArraysDiffView from './views/diff/arrays_diff_view';
+import BitmapsDiffView from './views/diff/bitmaps_diff_view';
+import DominatorsDiffView from './views/diff/dominators_diff_view';
 
 interface HeapDumpPageAttrs {
   readonly session: HeapDumpExplorerSession;
@@ -153,6 +158,7 @@ function buildTabs(
   const hideHint = hideExplanationSetting?.get() ?? false;
   const diffActive = isDiffActive();
   const activeBaseline = getActiveBaseline();
+  const baselineEngine = activeBaseline?.trace.engine;
   // Same-engine baseline (only kind that supports the SQL-JOINed
   // flamegraph diff). `trace.engine` is a fresh proxy per access, so we
   // identify the singleton by its `disposable === false` flag instead.
@@ -203,14 +209,21 @@ function buildTabs(
     {
       key: 'classes',
       title: 'Classes',
-      content: m(ClassesView, {
-        engine,
-        activeDump,
-        navigate: navigateWithTabs,
-        clearNavParam,
-        initialRootClass:
-          state.view === 'classes' ? state.params.rootClass : undefined,
-      }),
+      content:
+        diffActive && baselineEngine
+          ? m(ClassesDiffView, {
+              currentEngine: engine,
+              baselineEngine,
+              navigate: navigateWithTabs,
+            })
+          : m(ClassesView, {
+              engine,
+              activeDump,
+              navigate: navigateWithTabs,
+              clearNavParam,
+              initialRootClass:
+                state.view === 'classes' ? state.params.rootClass : undefined,
+            }),
     },
     {
       key: 'objects',
@@ -226,49 +239,78 @@ function buildTabs(
     {
       key: 'dominators',
       title: 'Dominators',
-      content: m(DominatorsView, {
-        engine,
-        activeDump,
-        navigate: navigateWithTabs,
-      }),
+      content:
+        diffActive && baselineEngine
+          ? m(DominatorsDiffView, {
+              currentEngine: engine,
+              baselineEngine,
+              navigate: navigateWithTabs,
+            })
+          : m(DominatorsView, {
+              engine,
+              activeDump,
+              navigate: navigateWithTabs,
+            }),
     },
     {
       key: 'bitmaps',
       title: 'Bitmaps',
-      content: m(BitmapGalleryView, {
-        engine,
-        activeDump,
-        navigate: navigateWithTabs,
-        clearNavParam,
-        hasFieldValues: overview.hasFieldValues,
-        filterKey:
-          state.view === 'bitmaps' ? state.params.filterKey : undefined,
-      }),
+      content:
+        diffActive && baselineEngine
+          ? m(BitmapsDiffView, {
+              currentEngine: engine,
+              baselineEngine,
+              navigate: navigateWithTabs,
+            })
+          : m(BitmapGalleryView, {
+              engine,
+              activeDump,
+              navigate: navigateWithTabs,
+              clearNavParam,
+              hasFieldValues: overview.hasFieldValues,
+              filterKey:
+                state.view === 'bitmaps' ? state.params.filterKey : undefined,
+            }),
     },
     {
       key: 'strings',
       title: 'Strings',
-      content: m(StringsView, {
-        engine,
-        activeDump,
-        navigate: navigateWithTabs,
-        clearNavParam,
-        initialQuery: state.view === 'strings' ? state.params.q : undefined,
-        hasFieldValues: overview.hasFieldValues,
-      }),
+      content:
+        diffActive && baselineEngine
+          ? m(StringsDiffView, {
+              currentEngine: engine,
+              baselineEngine,
+              navigate: navigateWithTabs,
+            })
+          : m(StringsView, {
+              engine,
+              activeDump,
+              navigate: navigateWithTabs,
+              clearNavParam,
+              initialQuery:
+                state.view === 'strings' ? state.params.q : undefined,
+              hasFieldValues: overview.hasFieldValues,
+            }),
     },
     {
       key: 'arrays',
       title: 'Arrays',
-      content: m(ArraysView, {
-        engine,
-        activeDump,
-        navigate: navigateWithTabs,
-        clearNavParam,
-        initialArrayHash:
-          state.view === 'arrays' ? state.params.arrayHash : undefined,
-        hasFieldValues: overview.hasFieldValues,
-      }),
+      content:
+        diffActive && baselineEngine
+          ? m(ArraysDiffView, {
+              currentEngine: engine,
+              baselineEngine,
+              navigate: navigateWithTabs,
+            })
+          : m(ArraysView, {
+              engine,
+              activeDump,
+              navigate: navigateWithTabs,
+              clearNavParam,
+              initialArrayHash:
+                state.view === 'arrays' ? state.params.arrayHash : undefined,
+              hasFieldValues: overview.hasFieldValues,
+            }),
     },
   ];
 
