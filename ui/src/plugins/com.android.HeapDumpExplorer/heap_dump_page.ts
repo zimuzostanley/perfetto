@@ -50,6 +50,8 @@ import StringsDiffView from './views/diff/strings_diff_view';
 import ArraysDiffView from './views/diff/arrays_diff_view';
 import BitmapsDiffView from './views/diff/bitmaps_diff_view';
 import DominatorsDiffView from './views/diff/dominators_diff_view';
+import AllObjectsDiffView from './views/diff/all_objects_diff_view';
+import ObjectDiffView from './views/diff/object_diff_view';
 
 interface HeapDumpPageAttrs {
   readonly session: HeapDumpExplorerSession;
@@ -228,13 +230,22 @@ function buildTabs(
     {
       key: 'objects',
       title: 'Objects',
-      content: m(AllObjectsView, {
-        engine,
-        activeDump,
-        navigate: navigateWithTabs,
-        clearNavParam,
-        initialClass: state.view === 'objects' ? state.params.cls : undefined,
-      }),
+      content:
+        diffActive && baselineEngine
+          ? m(AllObjectsDiffView, {
+              currentEngine: engine,
+              baselineEngine,
+              cls: state.view === 'objects' ? state.params.cls : undefined,
+              navigate: navigateWithTabs,
+            })
+          : m(AllObjectsView, {
+              engine,
+              activeDump,
+              navigate: navigateWithTabs,
+              clearNavParam,
+              initialClass:
+                state.view === 'objects' ? state.params.cls : undefined,
+            }),
     },
     {
       key: 'dominators',
@@ -337,14 +348,24 @@ function buildTabs(
       key: instanceTabKey(obj.id),
       title: obj.label,
       closeButton: true,
-      content: m(ObjectView, {
-        engine,
-        activeDump,
-        heaps: overview.heaps,
-        navigate: navigateWithTabs,
-        openFlamegraphPivotedAt: session.openFlamegraphPivotedAt,
-        params: {id: obj.objId},
-      }),
+      content:
+        diffActive && baselineEngine
+          ? m(ObjectDiffView, {
+              currentEngine: engine,
+              baselineEngine,
+              activeDump,
+              currentId: obj.currentId,
+              baselineId: obj.baselineId,
+              navigate: navigateWithTabs,
+            })
+          : m(ObjectView, {
+              engine,
+              activeDump,
+              heaps: overview.heaps,
+              navigate: navigateWithTabs,
+              openFlamegraphPivotedAt: session.openFlamegraphPivotedAt,
+              params: {id: obj.objId},
+            }),
     });
   }
 
