@@ -12,22 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Same-trace baseline state. The baseline is a (trace, dump) ref into
-// the primary trace itself: one engine, two filters. Diff views read it
-// via `getActiveBaseline()` and re-render on change.
+// Multi-trace baseline pool. Each pooled trace owns its own
+// WasmEngineProxy. The active baseline is one (trace, dump) ref;
+// diff views read it via `getActiveBaseline()` and re-render on change.
 
 import m from 'mithril';
 import type {Engine} from '../../../trace_processor/engine';
 import type {HeapDump} from '../queries';
+import {clearDiffRows} from '../diff/diff_debug';
 
 export interface BaselineTrace {
   readonly id: string;
   readonly engine: Engine;
   readonly title: string;
   readonly dumps: ReadonlyArray<HeapDump>;
-  // Marker for the singleton self-baseline entry. Cross-trace baselines
-  // (added in a follow-up CL) carry their own engine and have this set
-  // to `true`.
+  // False for the synthetic "self" entry whose engine is the primary
+  // trace's own — disposing it would tear down the primary. Defaults to
+  // true (real pooled baselines own their workers).
   readonly disposable?: boolean;
 }
 
@@ -72,13 +73,30 @@ export function baselineDumpFilterSql(alias: string = 'o'): string {
   return `${alias}.upid = ${d.upid} AND ${alias}.graph_sample_ts = ${d.ts}`;
 }
 
-// Pick a dump from the primary trace itself as the baseline. Same engine
-// is reused for both sides; queries serialize on its single worker but
-// independent filter SQL still gives correct (different) results.
+export function addBaselineTrace(
+  engine: Engine,
+  title: string,
+  dumps: ReadonlyArray<HeapDump>,
+): BaselineTrace {
+  const t: BaselineTrace = {
+    id: `btrace-${nextTraceId++}`,
+    engine,
+    title,
+    dumps,
+  };
+  traces = [...traces, t];
+  redraw();
+  return t;
+}
+
+// Pick a dump from the primary trace itself as the baseline. Lazily
+// registers a singleton self-baseline entry per primary engine — same
+// engine is reused for both sides; queries serialize on its single worker
+// but independent filter SQL still gives correct (different) results.
 //
-// `trace.engine` is a per-plugin proxy minted fresh on every access, so
-// we cannot use reference equality to dedupe — `disposable === false`
-// is the singleton signal we own for the self-baseline.
+// The engine here is a per-plugin proxy and is freshly minted on every
+// access from `trace.engine`, so we cannot use reference equality to
+// dedupe — `disposable === false` is the singleton signal we own.
 export function setSelfTraceBaseline(
   engine: Engine,
   title: string,
@@ -100,7 +118,8 @@ export function setSelfTraceBaseline(
 }
 
 // Picking a dump flips back into 'diff' mode. To deselect call
-// clearActiveBaseline.
+// clearActiveBaseline; null is intentionally not accepted here so callers
+// can't bypass clearDiffRows().
 export function setActiveBaseline(b: BaselineDumpRef): void {
   if (active !== null && active.trace === b.trace && active.dump === b.dump) {
     return;
@@ -113,14 +132,41 @@ export function setActiveBaseline(b: BaselineDumpRef): void {
 export function clearActiveBaseline(): void {
   if (!active) return;
   active = null;
+  clearDiffRows();
   redraw();
 }
 
+export function removeBaselineTrace(traceId: string): void {
+  const t = traces.find((x) => x.id === traceId);
+  if (!t) return;
+  if (active && active.trace === t) {
+    active = null;
+    clearDiffRows();
+  }
+  traces = traces.filter((x) => x.id !== traceId);
+  disposeEngine(t);
+  redraw();
+}
+
+// Clears state BEFORE disposing engines so any in-flight fetch sees
+// active === null after its await and abandons the merge.
 export function dispose(): void {
   if (traces.length === 0 && !active) return;
+  const old = traces;
   active = null;
   traces = [];
+  clearDiffRows();
+  for (const t of old) disposeEngine(t);
   redraw();
+}
+
+function disposeEngine(t: BaselineTrace): void {
+  if (t.disposable === false) return;
+  try {
+    (t.engine as unknown as Disposable)[Symbol.dispose]();
+  } catch (e) {
+    console.error('Error disposing baseline engine:', e);
+  }
 }
 
 function redraw(): void {
@@ -134,6 +180,7 @@ export interface HeapdumpDebugApi {
   baselineFilename(): string | null;
   mode(): DiffMode;
   poolSize(): number;
+  pickBaseline(title: string): boolean;
 }
 
 declare global {
@@ -148,5 +195,11 @@ if (typeof window !== 'undefined') {
     baselineFilename: () => active?.trace.title ?? null,
     mode: () => mode,
     poolSize: () => traces.length,
+    pickBaseline: (title) => {
+      const t = traces.find((x) => x.title === title);
+      if (!t || t.dumps.length === 0) return false;
+      setActiveBaseline({trace: t, dump: t.dumps[0]});
+      return true;
+    },
   };
 }

@@ -29,7 +29,9 @@ import {Intent} from '../../../widgets/common';
 import type {OverviewData, HeapInfo} from '../types';
 import {type NavFn, sizeRenderer, countRenderer} from '../components';
 import type {HeapDump} from '../queries';
-import {Button} from '../../../widgets/button';
+import {getLoadState} from '../baseline/load_action';
+import {openBaselineFilePicker, shouldShowBaselineHeader} from '../header';
+import {Button, ButtonVariant} from '../../../widgets/button';
 import {
   baselineCol,
   currentCol,
@@ -132,6 +134,7 @@ function OverviewView(): m.Component<OverviewViewAttrs> {
               )
             : null,
         ),
+        child('load', renderLoadBaselineSection()),
         child(
           'loading',
           baselineLoading === true && !isDiff
@@ -167,6 +170,48 @@ function OverviewView(): m.Component<OverviewViewAttrs> {
       ]);
     },
   };
+}
+
+// ----- Top-of-tab "Load baseline" affordance -------------------------------
+//
+// Only rendered in single-engine mode. When a baseline IS loaded, the slim
+// header above the tabs holds the controls — no need to repeat them here.
+
+function renderLoadBaselineSection(): m.Children {
+  // The Overview-tab CTA is the discovery entry point for diff mode in the
+  // common single-trace, no-diff workflow. Once the top bar is showing
+  // baseline state (a load is in flight, an error needs reading, or a
+  // pool / active baseline exists) the row's selector takes over and the
+  // CTA collapses to keep the page free of duplicated affordances.
+  if (shouldShowBaselineHeader()) return null;
+  const {error} = getLoadState();
+  // Bare button + helper text; we deliberately don't wrap in a Callout
+  // here because the Callout's leading icon collides visually with the
+  // button's `difference` icon (two adjacent glyphs reading the same).
+  return [
+    m(
+      'div',
+      {class: 'ah-heading-row ah-mb-4'},
+      m(Button, {
+        label: 'Diff against another trace…',
+        icon: 'difference',
+        intent: Intent.Primary,
+        variant: ButtonVariant.Filled,
+        onclick: () => openBaselineFilePicker(),
+      }),
+    ),
+    error &&
+      m(
+        Callout,
+        {
+          icon: 'error',
+          intent: Intent.Danger,
+          role: 'alert',
+          className: 'ah-mb-4',
+        },
+        error,
+      ),
+  ];
 }
 
 // ----- General Information --------------------------------------------------

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Top bar hosting the primary heap-dump selector. Only renders when
-// the trace has more than one dump.
+// Top bar hosting the primary heap-dump selector and baseline pool
+// controls. Hides when neither has anything to show.
 
 import m from 'mithril';
 import {Trace} from '../../public/trace';
@@ -22,6 +22,7 @@ import {Button, ButtonVariant} from '../../widgets/button';
 import {MenuDivider, MenuItem, MenuTitle, PopupMenu} from '../../widgets/menu';
 import {formatDuration} from '../../components/time_utils';
 import * as queries from './queries';
+import {HeapDumpDiffHeader, shouldShowBaselineHeader} from './header';
 import {setSelfTraceBaseline} from './baseline/state';
 import {HeapDumpExplorerSession} from './session';
 
@@ -35,8 +36,24 @@ export class TopBar implements m.ClassComponent<TopBarAttrs> {
   view({attrs}: m.Vnode<TopBarAttrs>): m.Children {
     const hasPrimary =
       attrs.session.dumps.length > 1 && attrs.session.activeDump !== null;
-    if (!hasPrimary) return null;
-    return m('div', {class: 'ah-top-bar'}, renderPrimarySelector(attrs));
+    const hasBaseline = shouldShowBaselineHeader();
+    // The HeapDumpDiffHeader always keeps a hidden file input mounted so
+    // the Overview-tab CTA can fire it. Render it even when the visible
+    // row collapses — it returns just the input in that case.
+    if (!hasPrimary && !hasBaseline) {
+      return m('div', {class: 'ah-top-bar ah-top-bar--hidden'}, [
+        m(HeapDumpDiffHeader, {trace: attrs.trace}),
+      ]);
+    }
+    return m(
+      'div',
+      {class: 'ah-top-bar'},
+      hasPrimary ? renderPrimarySelector(attrs) : null,
+      hasPrimary && hasBaseline
+        ? m('span', {class: 'ah-top-bar__separator'}, '|')
+        : null,
+      m(HeapDumpDiffHeader, {trace: attrs.trace}),
+    );
   }
 }
 
@@ -91,8 +108,8 @@ function renderPrimarySelector(attrs: TopBarAttrs): m.Children {
 }
 
 function processLabel(d: queries.HeapDump): string {
-  // hprof has no real pid — trace_processor reports 0. "pid 0" reads
-  // like kernel, so treat 0 as missing.
+  // See header.ts:dumpProcessLabel — pid 0 means "unknown" for hprofs
+  // without process metadata.
   const hasPid = d.pid !== null && d.pid !== 0;
   if (d.processName !== null && hasPid) {
     return `${d.processName} (pid ${d.pid})`;
